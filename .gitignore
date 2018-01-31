@@ -3,3 +3,5 @@ bin/
 cgpipemon-server
 cgpipemon
 Gopkg.lock
+.cgpipemonrc
+bindata.go
