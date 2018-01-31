@@ -23,7 +23,7 @@ func NewUser(db *sql.DB, username string, passwd string, admin bool) (*User, err
 	if err != nil {
 		return nil, err
 	}
-	return &User {id, username, admin}, nil
+	return &User{id, username, admin}, nil
 }
 
 func CheckPass(db *sql.DB, username string, plain string) bool {

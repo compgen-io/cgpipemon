@@ -2,17 +2,21 @@ package main
 
 import (
     "os"
+    "os/signal"
     "syscall"
-    "bufio"
+    // "bufio"
+    // "flag"
     "fmt"
     "net/http"
     "strings"
     "log"
-    "golang.org/x/crypto/ssh/terminal"
+    // "golang.org/x/crypto/ssh/terminal"
+    //"github.com/BurntSushi/toml"
+
 
     "github.com/compgen-io/cgpipemon/config"
     "github.com/compgen-io/cgpipemon/db"
-    "github.com/compgen-io/cgpipemon/model"
+    // "github.com/compgen-io/cgpipemon/model"
     "github.com/compgen-io/cgpipemon/apiv1"
 )
 
@@ -29,45 +33,67 @@ func sayhelloName(w http.ResponseWriter, r *http.Request) {
     fmt.Fprintf(w, "Hello!") // send data to client side
 }
 
-func main() {
 
-    cfg := config.Init()
 
-    fmt.Println(cfg.Listen)
-    fmt.Println(cfg.DBConnect)
-    fmt.Println(cfg.Command)
 
-    pgdb, err1 := db.InitDb(cfg)
+
+func startServer(address string, dbConn string) {
+    pgdb, err1 := db.InitDb(dbConn)
     if err1 != nil {
         log.Fatal("DB Init: ", err1)
     }
 
-    if cfg.Command == "createdb" {
-        pgdb.CreateDB(cfg)
-    } else if cfg.Command == "testlogin" {
-        reader := bufio.NewReader(os.Stdin)
+    fmt.Println("Listening on: "+address)
+    srv := &http.Server{Addr: address}
 
-        fmt.Print("Enter Username: ")
-        username, _ := reader.ReadString('\n')
+    http.HandleFunc("/", sayhelloName) // set router
+    http.HandleFunc("/api/v1/ping", apiv1.Ping) // set router
+    http.HandleFunc("/api/v1/auth", apiv1.Auth) // set router
 
-        fmt.Print("Enter Password: ")
-        passwd, err := terminal.ReadPassword(int(syscall.Stdin))
+    // capture ^C
+    c := make(chan os.Signal, 2)
+    signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+    go func() {
+        <-c
         fmt.Println("")
-        if err == nil && model.CheckPass(pgdb.DbConn, strings.TrimSpace(username), strings.TrimSpace(string(passwd))) {
-            fmt.Println("Success!")
-        } else {
-            fmt.Println("Error")
-        }
+        fmt.Println("Ctrl-C... shutting down server")
+        srv.Shutdown(nil)
+    }()
 
-    } else {
-        
-        http.HandleFunc("/", sayhelloName) // set router
-        http.HandleFunc("/api/v1/ping", apiv1.Ping) // set router
-        http.HandleFunc("/api/v1/auth", apiv1.Auth) // set router
+    err2 := srv.ListenAndServe() // set listen port
+    if err2 != nil {
+        log.Printf("Httpserver: ListenAndServe() error: %s", err2)
+    }
 
-        err := http.ListenAndServe(cfg.Listen, nil) // set listen port
-        if err != nil {
-            log.Fatal("ListenAndServe: ", err)
-        }
+    // cleanup
+    pgdb.Close()
+
+}
+
+func createDB(dbConn string) {
+    pgdb, err1 := db.InitDb(dbConn)
+    if err1 != nil {
+        log.Fatal("DB Init: ", err1)
+    }
+
+    pgdb.CreateDB()
+    pgdb.Close()
+}
+
+func main() {
+    cfg, err := config.Init()
+
+    if err != nil {
+        config.ServerUsage()
+        log.Fatal(err)
+    }
+
+    switch cfg.Command {
+    case "serve":
+        startServer(cfg.Listen, cfg.DBConnect)
+    case "createdb":
+        createDB(cfg.DBConnect)
+    default:
+        fmt.Println("Unknown command: "+cfg.Command)
     }
 }
