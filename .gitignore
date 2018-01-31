@@ -1,0 +1,4 @@
+vendor/
+cgpipemon-server
+cgpipemon
+Gopkg.lock
